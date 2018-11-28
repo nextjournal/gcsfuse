@@ -161,60 +161,9 @@ func fixConflictingNames(entries []fuseutil.Dirent) (err error) {
 func readAllEntries(
 	ctx context.Context,
 	in inode.DirInode) (entries []fuseutil.Dirent, err error) {
-	// Read one batch at a time.
-	var tok string
-	for {
-		// Read a batch.
-		var batch []fuseutil.Dirent
-
-		batch, tok, err = in.ReadEntries(ctx, tok)
-		if err != nil {
-			err = fmt.Errorf("ReadEntries: %v", err)
-			return
-		}
-
-		// Accumulate.
-		entries = append(entries, batch...)
-
-		// Are we done?
-		if tok == "" {
-			break
-		}
-	}
-
-	// Ensure that the entries are sorted, for use in fixConflictingNames
-	// below.
-	sort.Sort(sortedDirents(entries))
-
-	// Fix name conflicts.
-	err = fixConflictingNames(entries)
-	if err != nil {
-		err = fmt.Errorf("fixConflictingNames: %v", err)
-		return
-	}
-
-	// Fix up offset fields.
-	for i := 0; i < len(entries); i++ {
-		entries[i].Offset = fuseops.DirOffset(i) + 1
-	}
-
-	// Return a bogus inode ID for each entry, but not the root inode ID.
-	//
-	// NOTE(jacobsa): As far as I can tell this is harmless. Minting and
-	// returning a real inode ID is difficult because fuse does not count
-	// readdir as an operation that increases the inode ID's lookup count and
-	// we therefore don't get a forget for it later, but we would like to not
-	// have to remember every inode ID that we've ever minted for readdir.
-	//
-	// If it turns out this is not harmless, we'll need to switch to something
-	// like inode IDs based on (object name, generation) hashes. But then what
-	// about the birthday problem? And more importantly, what about our
-	// semantic of not minting a new inode ID when the generation changes due
-	// to a local action?
-	for i, _ := range entries {
-		entries[i].Inode = fuseops.RootInodeID + 1
-	}
-
+	// return empty list to disable directory listing
+	var batch []fuseutil.Dirent
+	entries = batch
 	return
 }
 
