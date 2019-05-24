@@ -52,10 +52,7 @@ import (
 //
 // version is the gcsfuse version being built (e.g. "0.11.1"), or a short git
 // commit name if this is not for an official release.
-func buildBinaries(
-	dstDir string,
-	srcDir string,
-	version string) (err error) {
+func buildBinaries(dstDir, srcDir, version string, buildArgs []string) (err error) {
 	osys := runtime.GOOS
 	// Create the target structure.
 	{
@@ -79,8 +76,16 @@ func buildBinaries(
 		err = fmt.Errorf("TempDir: %v", err)
 		return
 	}
-
 	defer os.RemoveAll(gopath)
+
+	// Create a directory to become GOCACHE for our build below.
+	var gocache string
+	gocache, err = ioutil.TempDir("", "build_gcsfuse_gocache")
+	if err != nil {
+		err = fmt.Errorf("TempDir: %v", err)
+		return
+	}
+	defer os.RemoveAll(gocache)
 
 	// Make it appear as if the source directory is at the appropriate position
 	// in $GOPATH.
@@ -134,6 +139,7 @@ func buildBinaries(
 				"-ldflags",
 				fmt.Sprintf("-X main.gcsfuseVersion=%s", version),
 			)
+			cmd.Args = append(cmd.Args, buildArgs...)
 		}
 
 		cmd.Args = append(cmd.Args, bin.goTarget)
@@ -143,6 +149,7 @@ func buildBinaries(
 			"GO15VENDOREXPERIMENT=1",
 			fmt.Sprintf("GOROOT=%s", runtime.GOROOT()),
 			fmt.Sprintf("GOPATH=%s", gopath),
+			fmt.Sprintf("GOCACHE=%s", gocache),
 		}
 
 		// Build.
@@ -205,17 +212,18 @@ func copyFile(dst string, src string, perm os.FileMode) (err error) {
 func run() (err error) {
 	// Extract arguments.
 	args := flag.Args()
-	if len(args) != 3 {
-		err = fmt.Errorf("Usage: %s src_dir dst_dir version", os.Args[0])
+	if len(args) < 3 {
+		err = fmt.Errorf("Usage: %s src_dir dst_dir version [build args]", os.Args[0])
 		return
 	}
 
 	srcDir := args[0]
 	dstDir := args[1]
 	version := args[2]
+	buildArgs := args[3:]
 
 	// Build.
-	err = buildBinaries(dstDir, srcDir, version)
+	err = buildBinaries(dstDir, srcDir, version, buildArgs)
 	if err != nil {
 		err = fmt.Errorf("buildBinaries: %v", err)
 		return

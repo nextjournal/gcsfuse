@@ -184,14 +184,6 @@ more thorough discussion):
 *   The feature requires an additional request to GCS for each name lookup,
     which may have costs in terms of request budget and latency.
 
-*   GCS object listings are only eventually consistent, so directories that
-    recently implicitly sprang into existence due to the creation of a child
-    object may not show up for several minutes (or, in rare extreme cases,
-    hours or days). Similarly, recently deleted objects may continue for a time
-    to implicitly define directories that eventually wink out of existence.
-    Even if an up to date listing is seen once, it is not guaranteed to be seen
-    on the next lookup.
-
 *   With this setup, it will appear as if there is a directory called "foo"
     containing a file called "bar". But when the user runs `rm foo/bar`,
     suddenly it will appear as if the file system is completely empty. This is
@@ -239,6 +231,21 @@ When a file is created anew because it doesn't already exist and `open(2)` was
 called with `O_CREAT`, an empty object with the appropriate name is created in
 GCS. The resulting generation is used as the source generation for the inode,
 and it is as if that object had been pre-existing and was opened.
+
+<a name="pubsub-creation"></a>
+### Pubsub notifications on file creation.
+
+[Pubsub notifications][gcs_notifications] may be enabled on a GCS bucket to help track changes to
+Cloud Storage objects. Due of the semantics that GCSFuse uses to create files,
+3 different events are generated, per file created:
+1. One OBJECT_FINALIZE event: a zero sized object has been created.
+2. One OBJECT_DELETE event: the first generation of the object has been deleted.
+3. One OBJECT_FINALIZE event: a non-zero sized object has been created.
+
+These GCS events can be used from other cloud products, such as AppEngine,
+Cloud Functions, etc. It is recommended to ignore events for files with zero size.
+
+[gcs_notifications]: https://cloud.google.com/storage/docs/reporting-changes
 
 <a name="file-inode-modifications"></a>
 ### Modifications
@@ -342,18 +349,6 @@ look up child inodes. Unlike file inodes:
 Despite no guarantees about the actual times for directories, their time fields
 in `stat` structs will be set to something reasonable.
 
-<a name="dir-inode-reading"></a>
-### Reading
-
-Unlike reads for a particular object, listing operations in GCS are
-[eventually consistent][consistency]. This means that directory listings in
-gcsfuse may be arbitrarily far out of date. Additionally, seeing a fresh
-listing once does not imply that future listings will be fresh. This applies at
-the user level to commands like `ls`, and to the posix interfaces they use like
-`readdir`.
-
-[consistency]: https://cloud.google.com/storage/docs/concepts-techniques#consistency
-
 <a name="dir-inode-unlinking"></a>
 ### Unlinking
 
@@ -363,10 +358,7 @@ delete its backing object.
 
 gcsfuse does the pragmatic thing here: it lists objects with the directory's
 name as a prefix, returning `ENOTEMPTY` if anything shows up, and otherwise
-deletes the backing object. Because listing operations in GCS are only
-[eventually consistent][consistency], this may sometimes cause an `ENOTEMPTY`
-error when unlinking an empty directory, and may sometimes mean that a
-non-empty directory is successfully unlinked.
+deletes the backing object.
 
 Note that by their definition, [implicit directories](#implicit-directories)
 cannot be empty.
