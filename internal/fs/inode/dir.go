@@ -17,6 +17,7 @@ package inode
 import (
 	"fmt"
 	"path"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -260,8 +261,17 @@ func (d *dirInode) checkInvariants() {
 func (d *dirInode) lookUpChildFile(
 	ctx context.Context,
 	name string) (result LookUpResult, err error) {
+
 	result.FullName = d.Name() + name
-	result.Object, err = statObjectMayNotExist(ctx, d.bucket, result.FullName)
+	requestedFileName := result.FullName
+	regexp := regexp.MustCompile(`^data-named\/(.+)\/(.+)$`)
+	match := regexp.FindStringSubmatch(result.FullName)
+
+	if len(match) == 3 {
+		requestedFileName = "data/" + match[1]
+	}
+
+	result.Object, err = statObjectMayNotExist(ctx, d.bucket, requestedFileName)
 	if err != nil {
 		err = fmt.Errorf("statObjectMayNotExist: %v", err)
 		return
