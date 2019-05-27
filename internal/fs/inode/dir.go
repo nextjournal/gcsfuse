@@ -275,17 +275,31 @@ func (d *dirInode) lookUpChildDir(
 	name string) (result LookUpResult, err error) {
 	b := syncutil.NewBundle(ctx)
 
-	// Stat the placeholder object.
-	b.Add(func(ctx context.Context) (err error) {
-		result.FullName = d.Name() + name + "/"
-		result.Object, err = statObjectMayNotExist(ctx, d.bucket, result.FullName)
-		if err != nil {
-			err = fmt.Errorf("statObjectMayNotExist: %v", err)
+	if d.Name() == "data-named/" || (d.Name() == "" && name == "data-named") {
+		b.Add(func(ctx context.Context) (err error) {
+			result.FullName = d.Name() + name + "/"
+			// create a fake gcs object
+			// https://github.com/jacobsa/gcloud/blob/99c1a71c36ad0d2b5da7315e279e515c30c6ed76/gcs/object.go#L29
+			result.Object = &gcs.Object{
+				Name:           d.Name() + name + "/",
+				ContentType:    "application/octet-stream",
+				Size:           0,
+				Generation:     1234,
+				ComponentCount: 1,
+			}
 			return
-		}
-
-		return
-	})
+		})
+	} else {
+		b.Add(func(ctx context.Context) (err error) {
+			result.FullName = d.Name() + name + "/"
+			result.Object, err = statObjectMayNotExist(ctx, d.bucket, result.FullName)
+			if err != nil {
+				err = fmt.Errorf("statObjectMayNotExist: %v", err)
+				return
+			}
+			return
+		})
+	}
 
 	// If implicit directories are enabled, find out whether the child name is
 	// implicitly defined.
@@ -781,7 +795,7 @@ func (d *dirInode) CloneToChildFile(
 			SrcName:                       src.Name,
 			SrcGeneration:                 src.Generation,
 			SrcMetaGenerationPrecondition: &src.MetaGeneration,
-			DstName: path.Join(d.Name(), name),
+			DstName:                       path.Join(d.Name(), name),
 		})
 
 	if err != nil {
